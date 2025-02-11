@@ -119,8 +119,8 @@ app = FastAPI(title="Roro Chat API", version="0.2.0")
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 
-@app.get("/api/leaderboard", response_class=PlainTextResponse)
-@app.get("/api/aalb", response_class=PlainTextResponse)
+@app.get("/api/twitch/leaderboard", response_class=PlainTextResponse)
+@app.get("/api/twitch/aalb", response_class=PlainTextResponse) # Legacy
 async def query_leaderboard(search: str = None, cat: str = "aa", cmd: str = None, channel: str = None,
                             twitch_channel: str = Depends(validate_channel),
                             twitch_user: str = Depends(get_twitch_user)):
