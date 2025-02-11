@@ -7,6 +7,8 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.params import Depends
 from fastapi.responses import PlainTextResponse, Response
 
+from db.player import PlayerRepository
+from games.d20blackjack import D20BlackjackCommandHandler, D20Blackjack
 from leaderboard import LeaderboardCommandHandler
 from source_verify import NightbotVerifier
 
@@ -17,10 +19,10 @@ logging.basicConfig(level=logging.INFO)
 logging.info(f"DISABLE_CHANNEL_CHECK: {DISABLE_CHANNEL_CHECK}")
 
 
-def extract_nightbot_header_value(request: Request, header_name: str, key: str = "name", allowed_providers: [str] = None) -> Optional[str]:
+def construct_nightbot_header_dict(request: Request, header_name: str) -> dict:
     header = request.headers.get(header_name)
     if not header:
-        return None
+        return {}
     header_parts = header.split("&")
     header_dict = {}
     for part in header_parts:
@@ -28,14 +30,15 @@ def extract_nightbot_header_value(request: Request, header_name: str, key: str =
             continue
         k, value = part.split("=")
         header_dict[k] = value
-    if allowed_providers and header_dict.get("provider", "").lower() not in allowed_providers:
-        return None
-    return header_dict.get(key, "").lower()
+    return header_dict
 
 
 def validate_nightbot_channel(request: Request) -> Optional[str]:
-    name = extract_nightbot_header_value(request, "Nightbot-Channel", allowed_providers=["twitch"])
-    if not name:
+    if DISABLE_CHANNEL_CHECK:
+        return "test_channel"
+    header_dict = construct_nightbot_header_dict(request, "Nightbot-Channel")
+    name = header_dict.get("name", None)
+    if not name or header_dict.get("provider", "").lower() != "twitch":
         raise HTTPException(status_code=401, detail="")
     return name
 
@@ -49,8 +52,11 @@ def validate_fossabot_channel(request: Request) -> Optional[str]:
     return fb_header.lower()
 
 
-def get_nightbot_user(request: Request) -> Optional[str]:
-    return extract_nightbot_header_value(request, "Nightbot-User")
+def get_nightbot_user(request: Request) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    if DISABLE_CHANNEL_CHECK:
+        return "test_user", "test_provider", "test_id"
+    header_dict = construct_nightbot_header_dict(request, "Nightbot-User")
+    return header_dict.get("name", None), header_dict.get("provider", None), header_dict.get("providerId", None)
 
 
 def get_fossabot_user(request: Request) -> Optional[str]:
@@ -111,20 +117,24 @@ def is_channel_whitelisted(twitch_channel: str) -> bool:
         channels_expiry = time.time() + 3600
     return twitch_channel in channels_cache
 
+
 nightbot_verifier = NightbotVerifier()
 
+player_repo = PlayerRepository()
 leaderboard = LeaderboardCommandHandler()
+d20blackjack = D20BlackjackCommandHandler(player_repo)
 app = FastAPI(title="Roro Chat API", version="0.2.0")
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 
 @app.get("/api/nightbot/leaderboard", response_class=PlainTextResponse)
 @app.get("/api/twitch/aalb", response_class=PlainTextResponse)  # Legacy
-async def nightbot_leaderboard(request: Request, search: str = None, cat: str = "aa", cmd: str = None, channel: str = None,
-                               twitch_channel: str = Depends(validate_nightbot_channel),
-                               twitch_user: str = Depends(get_nightbot_user)):
+async def nightbot_leaderboard(request: Request, search: str = None, cat: str = "aa", cmd: str = None,
+                               channel: str = None,
+                               twitch_channel: str = Depends(validate_nightbot_channel)):
     if not nightbot_verifier.verify(request):
         raise HTTPException(status_code=401, detail="")
+    twitch_user, _, _ = get_nightbot_user(request)
     return await _query_leaderboard(search, cat, cmd, channel, twitch_channel, twitch_user)
 
 
@@ -132,8 +142,23 @@ async def nightbot_leaderboard(request: Request, search: str = None, cat: str = 
 async def fossabot_leaderboard(search: str = None, cat: str = "aa", cmd: str = None, channel: str = None,
                                twitch_channel: str = Depends(validate_fossabot_channel),
                                twitch_user: str = Depends(get_fossabot_user)):
-    raise HTTPException(status_code=401) # Fossabot not supported yet until verifier is implemented
+    raise HTTPException(status_code=401)  # Fossabot not supported yet until verifier is implemented
     # return await _query_leaderboard(search, cat, cmd, channel, twitch_channel, twitch_user)
+
+@app.get("/api/nightbot/d20blackjack", response_class=PlainTextResponse)
+async def nightbot_d20blackjack(request: Request,
+                                cmd: str = None,
+                                twitch_channel: str = Depends(validate_nightbot_channel),
+                                args: str = None):
+    if not nightbot_verifier.verify(request):
+        raise HTTPException(status_code=401, detail="")
+    args = (args or "").strip().lower()
+    if args == "help":
+        cmd = cmd or "!<command>"
+        return create_response(f"Roll 2 d20 to get {D20Blackjack.BLACKJACK}! If you go over, you bust! You can re-roll one die ONCE using {cmd} <face value>.")
+    twitch_user, twitch_user_id, provider = get_nightbot_user(request)
+    args = args.split(" ") if args else []
+    return d20blackjack.handle(provider, twitch_channel, twitch_user_id, twitch_user, args)
 
 
 async def _query_leaderboard(search: Optional[str], cat: str, cmd: Optional[str], channel: Optional[str],
