@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logging.info(f"DISABLE_CHANNEL_CHECK: {DISABLE_CHANNEL_CHECK}")
 
 
-def extract_nightbot_header_value(request: Request, header_name: str, key: str = "name") -> Optional[str]:
+def extract_nightbot_header_value(request: Request, header_name: str, key: str = "name", allowed_providers: [str] = None) -> Optional[str]:
     header = request.headers.get(header_name)
     if not header:
         return None
@@ -28,11 +28,13 @@ def extract_nightbot_header_value(request: Request, header_name: str, key: str =
             continue
         k, value = part.split("=")
         header_dict[k] = value
+    if allowed_providers and header_dict.get("provider", "").lower() not in allowed_providers:
+        return None
     return header_dict.get(key, "").lower()
 
 
 def validate_nightbot_channel(request: Request) -> Optional[str]:
-    name = extract_nightbot_header_value(request, "Nightbot-Channel")
+    name = extract_nightbot_header_value(request, "Nightbot-Channel", allowed_providers=["twitch"])
     if not name:
         raise HTTPException(status_code=401, detail="")
     return name
