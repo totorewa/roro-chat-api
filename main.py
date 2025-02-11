@@ -146,6 +146,7 @@ async def fossabot_leaderboard(search: str = None, cat: str = "aa", cmd: str = N
     # return await _query_leaderboard(search, cat, cmd, channel, twitch_channel, twitch_user)
 
 @app.get("/api/nightbot/d20blackjack", response_class=PlainTextResponse)
+@app.get("/api/nightbot/roro2", response_class=PlainTextResponse)
 async def nightbot_d20blackjack(request: Request,
                                 cmd: str = None,
                                 twitch_channel: str = Depends(validate_nightbot_channel),

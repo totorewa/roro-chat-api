@@ -153,7 +153,7 @@ class D20BlackjackCommandHandler:
         dice, result = self.game.roll_dice(channel, player)
         if result == RollResult.INVALID_STATE:  # shouldn't be possible
             return "Erm something went wrong. NotLikeThis"
-        roll = self._format_dice(dice, result)
+        roll = self._format_dice(player.name, dice, result)
         if result == RollResult.BLACKJACK:
             return f"Blackjack! {roll}"
         if result == RollResult.BUST:
@@ -164,13 +164,13 @@ class D20BlackjackCommandHandler:
         try:
             face_value = int(face_value)
         except ValueError:
-            return "That's not a valid d20 face value. smh"
+            return f"That's not a valid d20 face value, @{player.name}. smh"
         dice, result = self.game.reroll_dice(channel, player, face_value)
         if result == RollResult.INVALID_STATE:
-            return "You haven't rolled yet. Susge"
+            return f"You haven't rolled yet, @{player.name}. Susge"
         if result == RollResult.INVALID_FACE:
-            return "That's not a valid d20 face value. smh"
-        roll = self._format_dice(dice, result, reroll=True)
+            return f"That's not a valid d20 value, @{player.name}. smh"
+        roll = self._format_dice(player.name, dice, result, reroll=True)
         if result == RollResult.BLACKJACK:
             return f"Blackjack! {roll}"
         if result == RollResult.BUST:
@@ -178,19 +178,21 @@ class D20BlackjackCommandHandler:
         return roll
 
     def _handle_stats(self, provider: str, player_id: str, name: str, args: list[str]) -> str:
-        player = self.game.get_player(provider, player_id, name) if len(args) == 1 else self.game.get_player_by_name(provider, args[1])
+        player = self.game.get_player(provider, player_id, name) if len(args) == 1 else self.game.get_player_by_name(
+            provider, args[1])
         if not player:
-            return f"Player {args[1]} not found. smh"
+            return f"Player @{args[1]} not found. smh"
         stats = self.game.get_stats(player)
         if not stats:
-            return f"No stats found for {player.name}. NotLikeThis"
+            return f"No stats found for @{player.name}. NotLikeThis"
         average = round(stats['accumulated_value'] / stats['rolls'], 2) if stats['rolls'] else 0
         percentage_rerolled = round(stats['rerolls'] / stats['rolls'] * 100) if stats['rolls'] else 0
-        return f"{player.name} has rolled {stats['rolls']} times, rerolled {stats['rerolls']} times ({percentage_rerolled}%), got {stats['blackjacks']} blackjacks, and busted {stats['busts']} times. They have accumulated a total of {stats['accumulated_value']}, averaging {average} per roll."
-
+        percentage_busted = round(stats['busts'] / stats['rolls'] * 100) if stats['rolls'] else 0
+        percentage_blackjack = round(stats['blackjacks'] / stats['rolls'] * 100) if stats['rolls'] else 0
+        return f"@{player.name} has rolled {stats['rolls']} times, rerolled {stats['rerolls']} times ({percentage_rerolled}%), got {stats['blackjacks']} blackjacks ({percentage_blackjack}%), and gone bust {stats['busts']} times ({percentage_busted}%). They have accumulated a total of {stats['accumulated_value']}, averaging {average} per roll."
 
     @staticmethod
-    def _format_dice(dice: list[int], result: RollResult, reroll: bool = False) -> str:
+    def _format_dice(name: str, dice: list[int], result: RollResult, reroll: bool = False) -> str:
         verb = "rerolled" if reroll else "rolled"
         total = sum(dice)
         goal = ""
@@ -198,4 +200,4 @@ class D20BlackjackCommandHandler:
             goal = f" You overshot blackjack by {total - D20Blackjack.BLACKJACK}. CatPats"
         elif result == RollResult.ROLLED:
             goal = f" You {'were' if reroll else 'are'} {D20Blackjack.BLACKJACK - total} short of a blackjack. {'CatPats' if reroll else 'Stare'}"
-        return f"You {verb} [{dice[0]}] and [{dice[1]}] for {total}.{goal}"
+        return f"You {verb} [{dice[0]}] and [{dice[1]}] for {total}, @{name}.{goal}"
