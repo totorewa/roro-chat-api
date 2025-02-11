@@ -9,6 +9,8 @@ class SourceVerifier:
         pass
 
     def verify(self, request: Request):
+        if os.getenv("DISABLE_CHANNEL_CHECK", "false").lower() == "true":
+            return True
         pass
 
 class NightbotVerifier(SourceVerifier):
@@ -20,6 +22,8 @@ class NightbotVerifier(SourceVerifier):
         self.last_checked = 0
 
     def verify(self, request):
+        if super().verify(request):
+            return True
         ip = None
         real_ip_header_key = os.getenv("REAL_IP_HEADER", None)
         if real_ip_header_key:
@@ -39,7 +43,7 @@ class NightbotVerifier(SourceVerifier):
 
     def _cleanup(self):
         if self.last_checked + self._CLEANUP_INTERVAL <= time.time():
-            for ip in self.checked_ips:
+            for ip in list(self.checked_ips.keys()):
                 if self.checked_ips[ip]['checked_at'] + self._CHECK_CACHE <= time.time():
                     del self.checked_ips[ip]
             self.last_checked = time.time()
